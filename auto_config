@@ -1,0 +1,213 @@
+#!/usr/bin/bash
+
+
+install_and_config_av(){
+	linux=$(cat /etc/os-release | grep -w "NAME=.*")
+		if [ "$linux" == "NAME=Fedora" ];then 
+		echo $(yum install clamav clamd)
+		echo $(/usr/bin/freshclam -v)  #for updating freshclam databases
+		echo $(touch /var/log/freshclam.log)
+		echo $(chmod 600 /var/log/freshclam.log)
+		echo $(chown clamav /var/log/freshclam.log)
+		#Recomended Set This Config For Server : 3 * * * * /usr/bin/freshclam --quiet
+		echo "I Recomend You Set This Config for Server in crontab:3 * * * * /usr/bin/freshclam --quiet"
+		echo "I Recomend You Set Clamav Scan To Crontab service To Scan System in Certain Times"
+
+		elif [ "$linux" == "NAME=Ubuntu" ];then
+			echo $(sudo apt-get install clamav clamav-daemon)
+			echo $( sudo systemctl stop clamav-freshclam)
+			echo $(sudo freshclam)
+			echo "if sudo freshclam worked for your system?(yes/no)"
+			read fresponse
+			if [ "$fresponse" == yes ];then
+				echo "OK"
+			elif [ "$fresponse" == no ];then
+				echo $(sudo mkdir /var/lib/clamav)
+				echo $(cp daily.cvd /var/lib/clamav/daily.cvd)
+				echo $(sudo systemctl start clamav-freshclam)
+			fi
+		elif [ "$linux" == "Alpine Linux" ];then
+			echo $(sudo apt-get install clamav clamav-daemon)
+			echo $( sudo systemctl stop clamav-freshclam)
+			echo $(sudo freshclam)
+			echo "if sudo freshclam worked for your system?(yes/no)"
+			read fresponse
+			if [ "$fresponse" == yes ];then
+				echo "OK"
+			elif [ "$fresponse" == no ];then
+				echo $(sudo mkdir /var/lib/clamav)
+				echo $(cp daily.cvd /var/lib/clamav/daily.cvd)
+				echo $(sudo systemctl start clamav-freshclam)
+			fi
+
+		elif [ "$linux" == "Rocky Linux-" ];then
+			echo $(yum install clamav clamd)
+			echo $(/usr/bin/freshclam -v)  #for updating freshclam databases
+			echo $(touch /var/log/freshclam.log)
+			echo $(chmod 600 /var/log/freshclam.log)
+			echo $(chown clamav /var/log/freshclam.log)
+			#Recomended Set This Config For Server : 3 * * * * /usr/bin/freshclam --quiet
+			echo "I Recomend You Set This Config for Server in crontab:3 * * * * /usr/bin/freshclam --quiet"
+			echo "I Recomend You Set Clamav Scan To Crontab service To Scan System in Certain Times"
+
+		fi
+
+}
+
+install_and_config_rootkit_hunter(){
+	echo $(cd /tmp)
+	echo $(wget http://downloads.sourceforge.net/project/rkhunter/rkhunter/1.4.6/rkhunter-1.4.6.tar.gz)
+	echo $(tar -xvf rkhunter-1.4.6.tar.gz)
+	echo $(cd rkhunter-1.4.6)
+	echo $(./installer.sh --install)
+}
+
+
+
+install_and_config_malware_detect(){
+	echo $(cd /usr/local/src)
+	echo $(wget http://www.rfxn.com/downloads/maldetect-current.tar.gz)
+	echo $(cd malwaredetect-1.5)
+	echo $(./install.sh)
+	echo "quarantine_hits = "1" >> /usr/local/maldetect/conf.maldet"
+}
+
+
+psad(){
+	install_psad=$(sudo dnf inastall psad)
+	echo $install_psad
+	}
+
+rsyslog(){
+	echo $(dnf install rsyslog)
+	echo "kern.warning /var/log/iptables.log" >> /etc/rsyslog.conf
+	echo $(sudo systemctl restart rsyslog)
+}
+
+
+modsecurity(){
+	redhat=`sudo find /etc -type f -iname 'dnf*'`
+	debian=`sudo find /etc -type f -iname 'apt*'`
+	if [ "$redhat" ];then
+		# Configure LibModsecurity with Apache
+		sudo dnf update
+		sudo dnf config-manager --set-enabled powertools
+		sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+		sudo
+		sudo dnf install https://rpms.remirepo.net/enterprise/remi-release-8.rpm
+		sudo dnf config-manager --set-enabled remi
+		sudo dnf install gcc-c++ flex bison yajl curl-devel curl zlib-devel pcre-devel autoconf automake git curl make libxml2-devel pkgconfig libtool httpd-devel redhat-rpm-config git wget openssl openssl-devel vim GeoIP-devel doxygen yajl-devel libmaxminddb libmaxminddb-devel GeoIP-devel lmdb lmdb-devel ssdeep-devel lua-devel
+		sudo mkdir ~/modsec
+		cd ~/modsec
+		sudo wget -P ~/modsec https://github.com/SpiderLabs/ModSecurity/releases/download/v3.0.4/modsecurity-v3.0.4.tar.gz
+		cd ~/modsec
+		sudo tar xzf modsecurity-v3.0.4.tar.gz
+		cd modsecurity-v3.0.4
+		./build.sh
+		make
+		make install
+
+		# Install ModSecurity-Apache Connector
+		cd ~
+		git clone https://github.com/SpiderLabs/ModSecurity-apache
+		cd ModSecurity-apache
+		./autogen.sh
+		./configure --with-libmodsecurity=/usr/local/modsecurity/
+		make
+		make install
+
+		# Configure Apache with LibModsecurity
+		echo "LoadModule security3_module /usr/lib64/httpd/modules/mod_security3.so" | sudo tee -a /etc/httpd/conf/httpd.conf
+
+		mkdir /etc/httpd/conf.d/modsecurity.d
+		cp ~/modsec/modsecurity-v3.0.4/modsecurity.conf-recommended /etc/httpd/conf.d/modsecurity.d/modsecurity.conf
+
+		sudo cp ~/modsec/modsecurity-v3.0.4/unicode.mapping /etc/httpd/conf.d/modsecurity.d/
+
+		sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/httpd/conf.d/modsecurity.d/modsecurity.conf
+
+		sed -i 's#/var/log/modsec_audit.log#/var/log/httpd/modsec_audit.log#' /etc/httpd/conf.d/modsecurity.d/modsecurity.conf
+
+
+		touch /etc/httpd/conf.d/modsecurity.d/rules.conf
+		echo '''Include "/etc/httpd/conf.d/modsecurity.d/modsecurity.conf"
+		Include "/etc/httpd/conf.d/modsecurity.d/owasp-crs/crs-setup.conf"
+		Include "/etc/httpd/conf.d/modsecurity.d/owasp-crs/rules/*.conf" ''' > /etc/httpd/conf.d/modsecurity.d/rules.conf
+
+		# Install OWASP ModSecurity Core Rule Set (CRS)
+
+		git clone https://github.com/SpiderLabs/owasp-modsecurity-crs.git /etc/httpd/conf.d/modsecurity.d/owasp-crs
+		cp /etc/httpd/conf.d/modsecurity.d/owasp-crs/crs-setup.conf{.example,}
+
+
+		# Activate ModSecurity 3 on CentOS 8
+
+		echo """<Directory "/var/www/html">
+    modsecurity on
+    modsecurity_rules_file /etc/httpd/conf.d/modsecurity.d/rules.conf
+    Options Indexes FollowSymLinks
+    AllowOverride None
+    Require all granted
+</Directory> """ > /etc/httpd/conf/httpd.conf
+
+		systemctl restart httpd
+
+
+
+
+
+
+
+	elif [ "$debian" ];then
+		sudo apt-get install libapache2-modsecurity # install
+		## Verify if the mod_security module was loaded
+		sudo apachectl -M | grep --color security
+
+		mv /etc/modsecurity/modsecurity.conf{-recommended,}
+		service apache2 reload
+	
+		# You’ll find a new log file for mod_security in the Apache log directory
+		log=`ls -l /var/log/apache2/modsec_audit.log`
+		if [ "#log" ];then
+			echo "log File created [ OK ]"
+		else
+			echo "Error on Log File Creation [ ERROR 
+			"
+		fi
+		
+		
+		
+		echo """<Directory "/var/www/html">
+    modsecurity on
+    modsecurity_rules_file /etc/httpd/conf.d/modsecurity.d/rules.conf
+    Options Indexes FollowSymLinks
+    AllowOverride None
+    Require all granted
+</Directory> """ > /etc/modsecurity/modsecurity.conf
+
+		
+		systemctl restart apache2
+	fi
+
+
+}
+
+
+
+ddos_prevention(){
+
+	wget http://inetbase.com/scripts/ddos/install.sh
+	sh install.sh
+
+	cd /usr/local
+	cd ddos
+
+	echo """FREQ = 1
+BAN_PERIOD = 10000
+NO_OF_CONNECTIONS=130
+APF_BAN = 0""" >> ddos.conf
+
+}
+
+
+
