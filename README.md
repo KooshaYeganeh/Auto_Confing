@@ -1,2 +1,2 @@
 # Auto_Confing
-Automatically Configure your Host or Webserver 
+Automatically Configure your Host or VPS 
